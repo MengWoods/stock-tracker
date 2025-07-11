@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Stock Tracker Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9; }
+    h1 { margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; background-color: white; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+    th { background-color: #f2f2f2; }
+    .Overvalued { background-color: #ffe0e0; }
+    .Undervalued { background-color: #d6f5d6; }
+    .Fair { background-color: #f9f9f9; }
+    .Unknown { background-color: #e8e8e8; }
+    form { margin-top: 30px; }
+    input, button { padding: 6px 10px; margin-right: 10px; }
+    .sorted {
+      background-color: #e0f7fa;
+    }
+
+    .sort-arrow {
+      margin-left: 5px;
+      font-size: 12px;
+      color: #999;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Tracked Stocks</h1>
+
+  <!-- Refresh Button with Loading Effect -->
+  <form id="refreshForm" action="/refresh" method="get" style="display:inline;" onsubmit="handleRefreshClick();">
+    <button id="refreshBtn" type="submit" style="
+      padding: 8px 16px;
+      font-size: 14px;
+      background-color: #f0f0f0;
+      border: 1px solid #ccc;
+      cursor: pointer;
+      float: right;
+    ">
+      🔄 Refresh
+    </button>
+  </form>
+
+  <script>
+    function handleRefreshClick() {
+      const button = document.getElementById("refreshBtn");
+      button.disabled = true;
+      button.textContent = "⏳ Refreshing...";
+    }
+  </script>
+
+  <p>Last updated: {{ last_updated }}</p>
+
+  <form method="post">
+    <!-- <input type="text" name="symbol" placeholder="Stock symbol (e.g. AAPL)" required> -->
+    <input type="text" name="symbol" placeholder="Stock symbol (e.g. AAPL)" required
+      style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()">
+    <button type="submit" name="action" value="add">Add</button>
+    <button type="submit" name="action" value="remove">Remove</button>
+  </form>
+
+  <p>Currently tracking: {{ tracked | join(', ') }}</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">Symbol <span class="sort-arrow" data-index="0"></span></th>
+        <th onclick="sortTable(1)">Price <span class="sort-arrow" data-index="1"></span></th>
+        <th onclick="sortTable(2)">Change <span class="sort-arrow" data-index="2"></span></th>
+        <th onclick="sortTable(3)">Change % <span class="sort-arrow" data-index="3"></span></th>
+        <th onclick="sortTable(4)">EPS <span class="sort-arrow" data-index="4"></span></th>
+        <th onclick="sortTable(5)">Forward EPS <span class="sort-arrow" data-index="5"></span></th>
+        <th onclick="sortTable(6)">Forward PE <span class="sort-arrow" data-index="6"></span></th>
+        <th onclick="sortTable(7)">Estimated Price <span class="sort-arrow" data-index="7"></span></th>
+        <th onclick="sortTable(8)">Valuation <span class="sort-arrow" data-index="8"></span></th>
+        <th onclick="sortTable(9)">Day Low / High <span class="sort-arrow" data-index="9"></span></th>
+        <th onclick="sortTable(10)">52W Low / High <span class="sort-arrow" data-index="10"></span></th>
+      </tr>
+    </thead>
+
+
+    <tbody>
+      {% for stock in stocks %}
+      <tr class="{{ stock.valuation | default('Unknown') }}">
+        <td>{{ stock.symbol }}</td>
+        <td>{{ stock.price | float | round(2) }}</td>
+        <td>{{ stock.chg | float | round(2) }}</td>
+        <td>{{ stock.chg_pct | float | round(2) }}%</td>
+        <td>{{ stock.eps | float | round(2) }}</td>
+        <td>{{ stock.forward_eps | float | round(2) }}</td>
+        <td>{{ stock.forward_pe | float | round(2) }}</td>
+        <td>{{ stock.estimated_price | float | round(2) }}</td>
+        <td>{{ stock.valuation }}</td>
+        <td>{{ stock.day_low }} / {{ stock.day_high }}</td>
+        <td>{{ stock['52w_low'] }} / {{ stock['52w_high'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <script>
+    let sortDirection = {};
+
+    function sortTable(columnIndex) {
+      const table = document.querySelector("table");
+      const tbody = table.tBodies[0];
+      const rows = Array.from(tbody.rows);
+      const ths = document.querySelectorAll("thead th");
+
+      const isNumber = (val) => !isNaN(parseFloat(val.replace(/[^0-9.\-]/g, "")));
+      const getCellValue = (row) => {
+        let text = row.cells[columnIndex].textContent.trim();
+        return isNumber(text) ? parseFloat(text.replace(/[^0-9.\-]/g, "")) : text.toLowerCase();
+      };
+
+      const currentDir = sortDirection[columnIndex] || "asc";
+      const newDir = currentDir === "asc" ? "desc" : "asc";
+      sortDirection = {}; // Reset others
+      sortDirection[columnIndex] = newDir;
+
+      rows.sort((a, b) => {
+        let valA = getCellValue(a);
+        let valB = getCellValue(b);
+        if (valA < valB) return newDir === "asc" ? -1 : 1;
+        if (valA > valB) return newDir === "asc" ? 1 : -1;
+        return 0;
+      });
+
+      rows.forEach(row => tbody.appendChild(row));
+
+      // Update header highlights and arrows
+      ths.forEach((th, idx) => {
+        th.classList.remove("sorted");
+        const arrow = th.querySelector(".sort-arrow");
+        if (arrow) arrow.textContent = "";
+        if (idx === columnIndex) {
+          th.classList.add("sorted");
+          const arrow = th.querySelector(".sort-arrow");
+          if (arrow) arrow.textContent = newDir === "asc" ? "🔼" : "🔽";
+        }
+      });
+
+      // Optional: store sort preference
+      localStorage.setItem("sort_col", columnIndex);
+      localStorage.setItem("sort_dir", newDir);
+    }
+
+    // Restore last sort on page load
+    window.onload = function () {
+      const savedCol = localStorage.getItem("sort_col");
+      const savedDir = localStorage.getItem("sort_dir");
+      if (savedCol !== null && savedDir !== null) {
+        sortDirection[savedCol] = savedDir;
+        sortTable(parseInt(savedCol));
+      }
+    };
+  </script>
+
+
+</body>
+</html>
